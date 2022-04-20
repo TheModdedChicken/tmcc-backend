@@ -25,7 +25,7 @@ export default class WebsocketBus {
       body: { id, room }
     })
 
-    ws.on('message', (data) => this.messageHandler(this.WSConnections[index], data))
+    ws.on('message', (data) => this.messageHandler(id, data))
     ws.on('close', () => this.remove(id))
 
     return id;
@@ -42,7 +42,10 @@ export default class WebsocketBus {
     this.WSConnections = this.WSConnections.filter(ws => ws.id !== id);
   }
 
-  private messageHandler (conn: IWebsocketConn, dataBuffer: WebSocket.RawData) {
+  private messageHandler (id: string, dataBuffer: WebSocket.RawData) {
+    const conn = this.WSConnections.find(conn => conn.id === id);
+    if (!conn) return;
+
     try {
       const data: IWebsocketClientData = JSON.parse(dataBuffer.toString('utf-8'));
       try {
@@ -67,7 +70,7 @@ export default class WebsocketBus {
 
   private WebsocketCodes: {[key: string | number | symbol]: IWebsocketCode} = {
     change_room: (conn: IWebsocketConn, data: IWebsocketClientData) => {
-      if ("room" !in data.body || "room" !in data.body) throw {
+      if (!("room" in data.body) || !("room" in data.body)) throw {
         status: 515,
         message: "Invalid room",
         code: "invalid_room"
@@ -77,7 +80,10 @@ export default class WebsocketBus {
 
       return this.send(conn.id, {
         status: 200,
-        code: "changed_room"
+        code: "changed_room",
+        body: {
+          room: conn.room
+        }
       })
     },
     send_message: (conn: IWebsocketConn, data: IWebsocketClientData) => {
@@ -87,17 +93,20 @@ export default class WebsocketBus {
         code: "invalid_body"
       }
 
+      const body = { author: data.body.author, message: data.body.message };
+
       for (const ws of this.WSConnections) {
         if (ws.room === conn.room && ws.id !== conn.id) this.send(ws.id, {
           status: 200,
           code: "new_message",
-          body: { author: data.body.author, message: data.body.message }
+          body
         })
       }
 
       return this.send(conn.id, {
         status: 200,
-        code: "sent_message"
+        code: "sent_message",
+        body
       })
     },
     user_count: (conn: IWebsocketConn, data: IWebsocketClientData) => {
